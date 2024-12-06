@@ -1,0 +1,92 @@
+---
+title: "TestData_Imputation"
+author: "Kara Li"
+date: "2024-11-12"
+output: html_document
+---
+
+# Libraries
+
+```{r}
+library(mice)
+library(tidyverse)
+library(doParallel)
+library(parallel)
+```
+
+# Data Pre-processing
+
+```{r}
+# read raw dataset
+dataset_forImputation <- read.csv("trainData_Cleanv2.csv")
+dataset_forImputation[dataset_forImputation==""] <- NA
+```
+
+```{r}
+# just to help identify binary variables
+distinct_counts <- sapply(dataset_forImputation, function(x) length(unique(x)))
+
+# manually identified the numerical variables
+numVars <- colnames(dataset_forImputation)[c(4,5,8,30,31,32)]
+
+# to identify binary variables (distinct_counts <=3 because vars with missing data includes NA in the count)
+binaryVars <- c()
+for (i in 1:ncol(dataset_forImputation)) {
+  if (distinct_counts[i] <=3) {
+    binaryVars <- c(binaryVars,colnames(dataset_forImputation[i])) 
+  }
+}
+
+# to get the multi class variables
+catVars <- colnames(dataset_forImputation)[!colnames(dataset_forImputation) %in% c(numVars,binaryVars)]
+```
+
+```{r}
+# to transform categorical variables as factor
+dataset_forImputation[c(binaryVars,catVars)] <- lapply(dataset_forImputation[c(binaryVars,catVars)], as.factor)
+```
+
+## Set Cores for Parallel Programming
+
+```{r}
+# checking number of physical cores only
+num_cores <- detectCores(logical = FALSE)  # Logical = FALSE
+print(num_cores)
+```
+
+```{r}
+#setting the cores to do the imputation
+cl <- makeCluster(7)
+registerDoParallel(cl)
+```
+
+# Data Imputation
+
+```{r}
+# data imputation (monitor the run time of the function)
+startTime <- proc.time()
+dataset_Imputed <- mice(dataset_forImputation,
+                        #method=imputation_methods, 
+                        m=1, iter=1,
+                        seed = 456,
+                        parallel = TRUE)
+endTime <- proc.time()
+
+print(endTime-startTime)
+```
+
+```{r}
+stopCluster(cl)
+```
+
+```{r}
+# complete the process by using the 1st (action=1) imputed dataset
+validationData_Imputed <- complete(dataset_Imputed, action=1)
+```
+
+# Output
+
+```{r}
+#write out the file
+write_csv(trainData_Imputed ,"train.csv")
+```
